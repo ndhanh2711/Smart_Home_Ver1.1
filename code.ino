@@ -6,25 +6,29 @@
 
 // Khai báo địa chỉ LCD (0x27 hoặc 0x3F, tùy module của bạn)
 LiquidCrystal_I2C lcd(0x27, 16, 2);
+#include <ESP32Servo.h>
 
+static const int servoPin = 15;
+
+Servo servo1;
 //****************************************************RETURN MQ2 VALUE
 const int sensorPin1 = 25;
 const int sensorPin2 = 26;
 const int sensorPin3 = 27;
-uint8_t MQ21_getValue() {
-  uint8_t value1 = analogRead(sensorPin1);
+int MQ21_getValue() {
+  int value1 = analogRead(sensorPin1);
   // Serial.print("Analog 25: ");
   // Serial.print(value1);
   return value1;
 }
-uint8_t MQ22_getValue() {
-  uint8_t value2 = analogRead(sensorPin2);
+int MQ22_getValue() {
+  int value2 = analogRead(sensorPin2);
   // Serial.print(" | Analog 26: ");
   // Serial.print(value2);
   return value2;
 }
-uint8_t MQ23_getValue() {
-  uint8_t value3 = analogRead(sensorPin3);
+int MQ23_getValue() {
+  int value3 = analogRead(sensorPin3);
   // Serial.print(" | Analog 27: ");
   // Serial.println(value3);
   return value3;
@@ -113,6 +117,8 @@ uint8_t flame3_getValue() {
 //******************************************************************************
 void setup() {
   Serial.begin(115200);
+  servo1.attach(servoPin);
+  pinMode(23, INPUT);
   //*********************************Khoi tao LCD
   lcd.init();        // Khởi tạo LCD
   lcd.backlight();   // Bật đèn nền
@@ -145,11 +151,12 @@ void setup() {
 
   //Khai bao cac Tasks
    // Tạo Task1, chạy trên core 0
-    xTaskCreatePinnedToCore(Task1, "Task 1", 8192, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(Task2, "Task 2", 2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(Light_Control, "Light_Control", 2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(Display, "Display", 2048, NULL, 1, NULL, 1);
-
+    xTaskCreatePinnedToCore(Task1, "Task 1",                   8192, NULL, 2, NULL, 0);
+    xTaskCreatePinnedToCore(Flame_Ring, "Flame_Ring",          2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(Light_Control, "Light_Control",    2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(Display, "Display",                2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(Smoke_Ring, "Smoke_Ring",          2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(Door_Automation, "Door_Automation",2048, NULL, 1, NULL, 1);
 }
 // Declare global global variable
 uint8_t Flame1_Value = 0;
@@ -164,17 +171,13 @@ uint8_t Hum1_Value = 0;
 uint8_t Hum2_Value = 0;
 uint8_t Hum3_Value = 0;
 
-uint8_t CO1_Value = 0;
-uint8_t CO2_Value = 0;
-uint8_t CO3_Value = 0;
+int CO1_Value = 0;
+int CO2_Value = 0;
+int CO3_Value = 0;
 // Output processing variable
 // Task 1: Collect Data_______________________________________________
 void Task1(void *pvParameters) {
     while (1) {
-        Flame1_Value = flame1_getValue();
-        Flame2_Value = flame2_getValue();
-        Flame3_Value = flame3_getValue();
-
         Temp1_Value = temp1_getValue();
         Temp2_Value = temp2_getValue();
         Temp3_Value = temp3_getValue();
@@ -183,37 +186,88 @@ void Task1(void *pvParameters) {
         Hum2_Value = hum2_getValue();
         Hum3_Value = hum3_getValue();
 
+        vTaskDelay(100 / portTICK_PERIOD_MS); // Delay 1 giây
+    }
+}
+// Task 2: Processing Data
+void Flame_Ring(void *pvParameters) {
+    while (1) {
+        // Đọc giá trị từ cảm biến
+        Flame1_Value = flame1_getValue();
+        Flame2_Value = flame2_getValue();
+        Flame3_Value = flame3_getValue();
+
+        // Nếu phát hiện lửa từ bất kỳ cảm biến nào
+        if (Flame1_Value || Flame2_Value || Flame3_Value) {
+            for (int i = 0; i < 10; i++) { // Kêu 6 lần trong 3 giây
+                digitalWrite(2, HIGH); // Bật còi
+                vTaskDelay(300 / portTICK_PERIOD_MS); // Kêu 250ms
+                digitalWrite(2, LOW); // Tắt còi
+                vTaskDelay(200 / portTICK_PERIOD_MS); // Ngắt quãng 250ms
+            }
+        }
+
+        vTaskDelay(100 / portTICK_PERIOD_MS); // Chờ 100ms trước khi kiểm tra lại
+    }
+}
+
+void Smoke_Ring(void *pvParameters){
+  while(1){
         CO1_Value = MQ21_getValue();
         CO2_Value = MQ22_getValue();
         CO3_Value = MQ23_getValue();
-
-        vTaskDelay(100 / portTICK_PERIOD_MS); // Delay 1 giây
-    }
-} 
-// Task 2: Processing Data
-void Task2(void *pvParameters) {
-    while (1) {
-      // Serial.print(Flame1_Value);
-      // Serial.print(Flame2_Value);
-      // Serial.println(Flame3_Value);
-        // Fire Detect
-        if(Flame1_Value || Flame2_Value || Flame3_Value){
-          digitalWrite(2, HIGH);
-          Serial.print("RING");
+        Serial.print(CO1_Value);
+        Serial.print(" ");
+        Serial.print(CO2_Value);
+        Serial.print(" ");
+        Serial.println(CO3_Value);
+        if(CO1_Value >= 2000 || CO2_Value >= 2000 || CO3_Value >= 2000){
+          digitalWrite(2, HIGH); // Bật còi
+          vTaskDelay(3000 / portTICK_PERIOD_MS); // Kêu 250ms
+          digitalWrite(2, LOW); // Tắt còi
         }
-        vTaskDelay(100 / portTICK_PERIOD_MS);
-    }
+        vTaskDelay( 100 / portTICK_PERIOD_MS);
+  }
 }
+
 // Task 3: On/Off light handle
 void Light_Control(void *pvParameters) {
     while (1) {
-        uint8_t x = analogRead(33);
-        // Serial.println(x);
-        if(x > 3000){
+        int x = analogRead(33);
+        //Serial.println(x);
+        if(x > 4000){
           digitalWrite(17, HIGH);
+        }
+        else
+        {
+          digitalWrite(17, LOW);
         }
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
+}
+
+void Door_Automation(void *pvParameters){
+  while(1){
+     int state = digitalRead(23);
+
+  if (state == LOW)
+  {
+    for(int posDegrees = 0; posDegrees <= 90; posDegrees++) {
+    servo1.write(posDegrees);
+    delay(20);
+  }
+  delay(2000);
+  for(int posDegrees = 90; posDegrees >= 0; posDegrees--) {
+    servo1.write(posDegrees);
+    delay(20);
+  }
+  }
+  else
+  {
+    servo1.write(0);
+  }
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
 }
 void Display(void *pxParameters) {
   while(1){
@@ -236,25 +290,5 @@ void Display(void *pxParameters) {
   }
 }
 void loop() {
-
-  // float h1 = hum1_getValue();
-  // float h2 = hum2_getValue();
-  // float h3 = hum3_getValue();
-
-  // float t1 = temp1_getValue();
-  // float t2 = temp2_getValue();
-  // float t3 = temp3_getValue();
-
-  // // Kiểm tra xem có lỗi đọc dữ liệu không
-  // if (isnan(h1) || isnan(t1) || isnan(h2) || isnan(t2) || isnan(h3) || isnan(t3)) {
-  //   Serial.println("Failed to read from one or more DHT sensors!");
-  //   return;
-  // }
-
-  // // Hiển thị dữ liệu lên Serial Monitor
-  // Serial.print("DHT1 - Humidity: "); Serial.print(h1); Serial.print(" %\t Temperature: "); Serial.print(t1); Serial.println(" *C");
-  // Serial.print("DHT2 - Humidity: "); Serial.print(h2); Serial.print(" %\t Temperature: "); Serial.print(t2); Serial.println(" *C");
-  // Serial.print("DHT3 - Humidity: "); Serial.print(h3); Serial.print(" %\t Temperature: "); Serial.print(t3); Serial.println(" *C");
-
-  // Serial.println("-------------------------------");
+ //Don't use
 }

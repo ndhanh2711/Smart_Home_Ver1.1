@@ -1,20 +1,49 @@
+//*************************************************************************Khai báo các thư viện ngoại vi
 #include <Arduino.h>
+#include <Wire.h>                    // Giao tiếp 1-Wire cho cảm biến DHT
+#include <LiquidCrystal_I2C.h>       // Thư viện cho I2C
+#include <ESP32Servo.h>              // Thư viện cho động cơ servo SG90
+#include "DHT.h"                     // Thư viện cho cảm biến DHT
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Địa chỉ I2C cho LCD
 
 
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-
-// Khai báo địa chỉ LCD (0x27 hoặc 0x3F, tùy module của bạn)
-LiquidCrystal_I2C lcd(0x27, 16, 2);
-#include <ESP32Servo.h>
-
-static const int servoPin = 15;
-
+static const int servoPin = 15;      // Chân kết nối với động cơ servo
 Servo servo1;
-//****************************************************RETURN MQ2 VALUE
+// Khai báo các chân kết nối với cảm biên khí gas
 const int sensorPin1 = 25;
 const int sensorPin2 = 26;
 const int sensorPin3 = 27;
+// Khai báo chân kết nối với cảm biến DHT11
+#define DHTPIN1 13
+#define DHTPIN2 12
+#define DHTPIN3 14
+// Loại cảm biến (DHT11)
+#define DHTTYPE DHT11
+// Khởi tạo ba đối tượng DHT
+DHT dht1(DHTPIN1, DHTTYPE);
+DHT dht2(DHTPIN2, DHTTYPE);
+DHT dht3(DHTPIN3, DHTTYPE);
+// Khai báo, gán chân gpio cho cảm biến phát hiện ngọn lửa
+#define Flame1_PIN 5  
+#define Flame2_PIN 18
+#define Flame3_PIN 19
+// Khởi tạo các giá trị toàn cục cho từng loại thông số
+uint8_t Flame1_Value = 0;
+uint8_t Flame2_Value = 0;
+uint8_t Flame3_Value = 0;
+
+uint8_t Temp1_Value = 0;
+uint8_t Temp2_Value = 0;
+uint8_t Temp3_Value = 0;
+
+uint8_t Hum1_Value = 0;
+uint8_t Hum2_Value = 0;
+uint8_t Hum3_Value = 0;
+
+int CO1_Value = 0;
+int CO2_Value = 0;
+int CO3_Value = 0;
+//*********************************************************************************RETURN MQ2 VALUE
 int MQ21_getValue() {
   int value1 = analogRead(sensorPin1);
   // Serial.print("Analog 25: ");
@@ -33,24 +62,7 @@ int MQ23_getValue() {
   // Serial.println(value3);
   return value3;
 }
-//****************************************************RETURN DHT VALUE
-#include "DHT.h"
-
-#define DHTTYPE DHT11  // there are multiple kinds of DHT sensors
-
-// Khai báo chân kết nối với cảm biến
-#define DHTPIN1 13
-#define DHTPIN2 12
-#define DHTPIN3 14
-
-// Loại cảm biến (DHT11)
-#define DHTTYPE DHT11
-
-// Khởi tạo ba đối tượng DHT
-DHT dht1(DHTPIN1, DHTTYPE);
-DHT dht2(DHTPIN2, DHTTYPE);
-DHT dht3(DHTPIN3, DHTTYPE);
-
+//*********************************************************************************RETURN DHT VALUE
 // Hàm đọc độ ẩm từ từng cảm biến
 uint8_t hum1_getValue() {
   return dht1.readHumidity();
@@ -73,11 +85,7 @@ uint8_t temp3_getValue() {
   return dht3.readTemperature();
 }
 
-//***************************************************************FLAME SENSOR
-#define Flame1_PIN 5  // ESP32's pin GPIO13 connected to DO pin of the flame sensor
-#define Flame2_PIN 18
-#define Flame3_PIN 19
-
+//***********************************************************************************FLAME SENSOR
 uint8_t flame1_getValue() {
   int flame_state = digitalRead(Flame1_PIN);
 
@@ -114,7 +122,7 @@ uint8_t flame3_getValue() {
   }
 }
 
-//******************************************************************************
+//****************************************************************************************Hàm SET_UP
 void setup() {
   Serial.begin(115200);
   servo1.attach(servoPin);
@@ -152,28 +160,12 @@ void setup() {
   //Khai bao cac Tasks
    // Tạo Task1, chạy trên core 0
     xTaskCreatePinnedToCore(Task1, "Task 1",                   8192, NULL, 2, NULL, 0);
-    xTaskCreatePinnedToCore(Flame_Ring, "Flame_Ring",          2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(Light_Control, "Light_Control",    2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(Display, "Display",                2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(Smoke_Ring, "Smoke_Ring",          2048, NULL, 1, NULL, 1);
-    xTaskCreatePinnedToCore(Door_Automation, "Door_Automation",2048, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(Flame_Ring, "Flame_Ring",          4096, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(Light_Control, "Light_Control",    4096, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(Display, "Display",                4096, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(Smoke_Ring, "Smoke_Ring",          4096, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(Door_Automation, "Door_Automation",4096, NULL, 1, NULL, 1);
 }
-// Declare global global variable
-uint8_t Flame1_Value = 0;
-uint8_t Flame2_Value = 0;
-uint8_t Flame3_Value = 0;
-
-uint8_t Temp1_Value = 0;
-uint8_t Temp2_Value = 0;
-uint8_t Temp3_Value = 0;
-
-uint8_t Hum1_Value = 0;
-uint8_t Hum2_Value = 0;
-uint8_t Hum3_Value = 0;
-
-int CO1_Value = 0;
-int CO2_Value = 0;
-int CO3_Value = 0;
 // Output processing variable
 // Task 1: Collect Data_______________________________________________
 void Task1(void *pvParameters) {
@@ -206,7 +198,9 @@ void Flame_Ring(void *pvParameters) {
                 vTaskDelay(200 / portTICK_PERIOD_MS); // Ngắt quãng 250ms
             }
         }
-
+        // else{
+        //   digitalWrite(2, LOW);
+        // }
         vTaskDelay(100 / portTICK_PERIOD_MS); // Chờ 100ms trước khi kiểm tra lại
     }
 }
@@ -226,6 +220,9 @@ void Smoke_Ring(void *pvParameters){
           vTaskDelay(3000 / portTICK_PERIOD_MS); // Kêu 250ms
           digitalWrite(2, LOW); // Tắt còi
         }
+        // else{
+        //   digitalWrite(2, LOW);
+        // }
         vTaskDelay( 100 / portTICK_PERIOD_MS);
   }
 }
@@ -238,7 +235,7 @@ void Light_Control(void *pvParameters) {
         if(x > 4000){
           digitalWrite(17, HIGH);
         }
-        else
+        else if(x < 3000)
         {
           digitalWrite(17, LOW);
         }

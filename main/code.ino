@@ -1,57 +1,36 @@
-//*************************************************************************
-// Khai báo các thư viện ngoại vi
+//*************************************************************************Khai báo các thư viện ngoại vi
+#include <Arduino.h>
+#include <Wire.h>                    // Giao tiếp 1-Wire cho cảm biến DHT
+#include <LiquidCrystal_I2C.h>       // Thư viện cho I2C
+#include <ESP32Servo.h>              // Thư viện cho động cơ servo SG90
+#include "DHT.h"                     // Thư viện cho cảm biến DHT
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Địa chỉ I2C cho LCD
+#include "freertos/task.h"
 
-#include <Arduino.h>              // Thư viện chuẩn của Arduino cung cấp các hàm cơ bản
-#include <Wire.h>                 // Thư viện giao tiếp I2C (cho LCD I2C, cảm biến, v.v.)
-#include <LiquidCrystal_I2C.h>    // Thư viện điều khiển màn hình LCD qua I2C
-#include <ESP32Servo.h>           // Thư viện điều khiển động cơ servo trên ESP32
-#include "DHT.h"                  // Thư viện hỗ trợ cảm biến DHT (DHT11, DHT22)
-#include "freertos/task.h"        // Thư viện FreeRTOS cho việc quản lý task (nhiệm vụ)
-
-// Khởi tạo đối tượng LCD với địa chỉ I2C 0x27 và kích thước 16x2 ký tự
-LiquidCrystal_I2C lcd(0x27, 16, 2);
-
-//*************************************************************************
-// Khai báo các chân và đối tượng servo
-
-static const int servoPin = 15;   // Chân kết nối với động cơ servo (GPIO15)
-Servo servo1;                     // Khai báo đối tượng servo để điều khiển servo
-
-//*************************************************************************
-// Khai báo các chân kết nối với cảm biến khí gas
-#define sensorPin1  25           // Chân GPIO25 nối với cảm biến khí gas 1
-#define sensorPin2  26           // Chân GPIO26 nối với cảm biến khí gas 2
-#define sensorPin3  27           // Chân GPIO27 nối với cảm biến khí gas 3
-
-//*************************************************************************
+static const int servoPin = 15;      // Chân kết nối với động cơ servo
+Servo servo1;
+// Khai báo các chân kết nối với cảm biên khí gas
+#define sensorPin1  25
+#define sensorPin2  26
+#define sensorPin3  35
 // Khai báo chân kết nối với cảm biến DHT11
-
-#define DHTPIN1 13               // Chân GPIO13 cho cảm biến DHT11 số 1
-#define DHTPIN2 12               // Chân GPIO12 cho cảm biến DHT11 số 2
-#define DHTPIN3 14               // Chân GPIO14 cho cảm biến DHT11 số 3
-
-// Định nghĩa loại cảm biến DHT (ở đây là DHT11)
+#define DHTPIN1 13
+#define DHTPIN2 27
+#define DHTPIN3 14
+// Loại cảm biến (DHT11)
 #define DHTTYPE DHT11
 
-// Khởi tạo ba đối tượng DHT cho 3 cảm biến
-DHT dht1(DHTPIN1, DHTTYPE);        // Cảm biến DHT số 1
-DHT dht2(DHTPIN2, DHTTYPE);        // Cảm biến DHT số 2
-DHT dht3(DHTPIN3, DHTTYPE);        // Cảm biến DHT số 3
+// Khởi tạo ba đối tượng DHT
+DHT dht1(DHTPIN1, DHTTYPE);
+DHT dht2(DHTPIN2, DHTTYPE);
+DHT dht3(DHTPIN3, DHTTYPE);
 
-//*************************************************************************
-// Khai báo các chân kết nối với cảm biến phát hiện ngọn lửa
+// Khai báo, gán chân gpio cho cảm biến phát hiện ngọn lửa
+#define Flame1_PIN 5  
+#define Flame2_PIN 18
+#define Flame3_PIN 19
 
-#define Flame1_PIN 5             // Chân GPIO5 cho cảm biến ngọn lửa số 1
-#define Flame2_PIN 18            // Chân GPIO18 cho cảm biến ngọn lửa số 2
-#define Flame3_PIN 19            // Chân GPIO19 cho cảm biến ngọn lửa số 3
-
-//*************************************************************************
-// Khai báo các giá trị toàn cục lưu trữ dữ liệu cảm biến
-
-/**
- * Các biến toàn cục sau dùng để lưu trữ giá trị đọc được từ các cảm biến.
- * Việc sử dụng các biến toàn cục giúp các hàm khác nhau có thể truy cập và xử lý dữ liệu dễ dàng.
- */
+// Khởi tạo các giá trị toàn cục cho từng loại thông số
 uint8_t Flame1_Value = 0;
 uint8_t Flame2_Value = 0;
 uint8_t Flame3_Value = 0;
@@ -68,67 +47,42 @@ uint8_t CO1_Value = 0;
 uint8_t CO2_Value = 0;
 uint8_t CO3_Value = 0;
 
-//*************************************************************************
-// Phần cấu hình APP sử dụng ERa
-
-/* 
-   Định nghĩa vị trí máy chủ ERa, trong trường hợp này là Việt Nam.
-   Có thể thay đổi bằng cách bỏ comment định nghĩa ERA_LOCATION_SG nếu cần.
-*/
+//*********************************************************************************APP
+/* Select ERa host location (VN: Viet Nam, SG: Singapore) */
 #define ERA_LOCATION_VN
 // #define ERA_LOCATION_SG
 
-// Mã xác thực (Auth Token) để kết nối với ERa App hoặc Dashboard
-#define ERA_AUTH_TOKEN "74cbea38-26e9-4f03-9571-565cc6a5f834"
+// You should get Auth Token in the ERa App or ERa Dashboard
+#define ERA_AUTH_TOKEN "ad49479e-bb2d-4a1e-9c5e-d98110b4b794"
 
-// Bao gồm các thư viện của ERa cung cấp các tính năng Smart, đồng bộ thời gian, v.v.
 #include <ERa.hpp>
 #include <Automation/ERaSmart.hpp>
 #include <Time/ERaEspTime.hpp>
 
-// Khai báo thông tin kết nối WiFi (SSID và mật khẩu)
+
 const char ssid[] = "Quang Hai T3";
 const char pass[] = "19741975";
 
-// Khởi tạo đối tượng đồng bộ thời gian và đối tượng ERaSmart
-ERaEspTime syncTime;             // Đối tượng quản lý thời gian từ ERa
-ERaSmart smart(ERa, syncTime);   // Đối tượng ERaSmart sử dụng ERa và đồng bộ thời gian
+ERaEspTime syncTime;
+ERaSmart smart(ERa, syncTime);
 
-//*************************************************************************
-// Các hàm callback của ERa
-
-/* 
-   Hàm này được gọi khi có lệnh gửi tin nhắn SMS từ ERa.
-   Nó ghi log thông tin tin nhắn và trả về true để xác nhận đã xử lý.
-*/
+/* This function is triggered whenever an SMS is sent */
 ERA_WRITE_SMS() {
     ERA_LOG("ERa", "Write SMS to %s: %s", to, message);
     return true;
 }
 
-/* 
-   Hàm này được gọi mỗi khi thiết bị kết nối thành công với ERa.
-   Sử dụng để thông báo hoặc thực hiện các thiết lập sau khi kết nối.
-*/
+/* This function will run every time ERa is connected */
 ERA_CONNECTED() {
     ERA_LOG("ERa", "ERa connected!");
 }
 
-/* 
-   Hàm này được gọi mỗi khi thiết bị mất kết nối với ERa.
-   Có thể dùng để cập nhật trạng thái hiển thị hoặc thực hiện thao tác khôi phục.
-*/
+/* This function will run every time ERa is disconnected */
 ERA_DISCONNECTED() {
     ERA_LOG("ERa", "ERa disconnected!");
 }
 
-
 //*********************************************************************************RETURN MQ2 VALUE
-/**
- * Hàm lấy và trả về giá trị đo được của cảm biến khí gas
- * Hàm trả về giá trị digital
- * Với mức 1 được cài đặt tương ứng với nồng độ khí gas >= 20%
- */
 uint8_t MQ21_getValue() {
   uint8_t value1 = digitalRead(sensorPin1);
   if(value1 == HIGH){
@@ -157,11 +111,6 @@ uint8_t MQ23_getValue() {
   }
 }
 //*********************************************************************************RETURN DHT VALUE
-/**
- * Hàm trả về giá trị độ ẩm và nhiệt độ của cảm biến DHT11
- * Độ ẩm: XX (%)
- * Nhiệt độ XX (*C)
- */
 // Hàm đọc độ ẩm từ từng cảm biến
 uint8_t hum1_getValue() {
   return dht1.readHumidity();
@@ -185,11 +134,6 @@ uint8_t temp3_getValue() {
 }
 
 //***********************************************************************************FLAME SENSOR
-/**  
- * Phát hiện ngọn lửa và trả về giá trị 0 & 1 
- * 0 tương ứng với không có lửa
- * 1 tương ứng với có lửa
-*/
 uint8_t flame1_getValue() {
   int flame_state = digitalRead(Flame1_PIN);
 
@@ -266,12 +210,13 @@ void setup() {
   ERa.setScanWiFi(true);
   ERa.begin(ssid, pass);
   digitalWrite(17, LOW); // Đảm bảo đèn tắt ban đầu
+
+    // Lắng nghe sự kiện từ ERa Virtual Pin V12
+  // Đăng ký callback sử dụng lambda function để chuyển đổi kiểu dữ liệu phù hợp
   //ERa.addInterval(2000L, readSensorData); // Gửi dữ liệu cảm biến mỗi 2 giây
+  //Khai bao cac Tasks
+   // Tạo Task1, chạy trên core 0
 }
-/**
- * Function: Hàm đọc giá trị của tất cả các cảm biến
- * Hàm này lưu gía trị từ các hàm trả về vào các biến giá trị thông số toàn cục
- */
 void updateSensorValues() {
     Flame1_Value = flame1_getValue();
     Flame2_Value = flame2_getValue();
@@ -290,31 +235,23 @@ void updateSensorValues() {
     CO3_Value = MQ23_getValue();
 }
 
-/**
- * Các hàm lệnh gửi dữ liệu lên Era AppApp
- */
-// Gửi thông số nhiệt độ lên các virtual pin tương ứng
+// Hàm riêng cho từng virtual pin
 void sendTemp1() { ERa.virtualWrite(V0, Temp1_Value); }
 void sendTemp2() { ERa.virtualWrite(V1, Temp2_Value); }
 void sendTemp3() { ERa.virtualWrite(V2, Temp3_Value); }
-// Gửi thông số độ ẩm lên các virtual pin tương ứng
+
 void sendHum1() { ERa.virtualWrite(V3, Hum1_Value); }
 void sendHum2() { ERa.virtualWrite(V4, Hum2_Value); }
 void sendHum3() { ERa.virtualWrite(V5, Hum3_Value); }
-// Gửi thông điệp thông báo tình trạng có lửa hay không ở các phòng
+
 void sendFlame1() { ERa.virtualWrite(V6, Flame1_Value ? "WARNING" : "GOOD"); }
 void sendFlame2() { ERa.virtualWrite(V7, Flame2_Value ? "WARNING" : "GOOD"); }
 void sendFlame3() { ERa.virtualWrite(V8, Flame3_Value ? "WARNING" : "GOOD"); }
-// Gửi thông điệp thông báo tình trạng có khí gas hay không ở các phòng
+
 void sendCO1() { ERa.virtualWrite(V9, CO1_Value  ? "WARNING" : "GOOD"); }
 void sendCO2() { ERa.virtualWrite(V10, CO2_Value  ? "WARNING" : "GOOD"); }
 void sendCO3() { ERa.virtualWrite(V11, CO3_Value  ? "WARNING" : "GOOD"); }
 
-/**
- * Hàm chức năng cho chuông thông báo khi có tình trạng bất thường xảy ra
- * 1. Phát hiện ngọn lửa và chuông thông báo
- * 2. Phát hiện khí gas và chuông thông báo
- */
 void handleBuzzer() {
     if (Flame1_Value || Flame2_Value || Flame3_Value) {
         for (int i = 0; i < 10; i++) {
@@ -340,19 +277,16 @@ void handleBuzzer() {
 }
 
 
-/**
- * Hàm thực hiện chức năng đóng mở cửa tự động
- * Input: cảm biến hồng ngoại xác định xem có người tới cửa hay không 
- */
+
+int door_made = 0; // Trạng thái cửa mở/đóng theo thủ công
+int manual_mode = 0; // 0: tự động, 1: thủ công
+
 void controlServo() {
-  /**
-   * Đọc giá trị digital từ cảm biến hồng ngoại
-   * Khi có người: state = 0
-   * Khi không có người state = 11
-   */
     int state = digitalRead(23); 
-    // Phát hiện người, cửa mở tự động sau 2,5s thì tự động đóng lại 
-    if (state == LOW) {
+
+    // Chỉ chạy chế độ tự động khi không ở chế độ thủ công
+    if (state == LOW && manual_mode == 0) {
+        door_made = 0;  // Đảm bảo chế độ tự động hoạt động
         for (int posDegrees = 0; posDegrees <= 90; posDegrees++) {
             servo1.write(posDegrees);
             vTaskDelay(20 / portTICK_PERIOD_MS);
@@ -362,9 +296,31 @@ void controlServo() {
             servo1.write(posDegrees);
             vTaskDelay(20 / portTICK_PERIOD_MS);
         }
-    } else {
-        servo1.write(0);
     }
+}
+
+// Điều khiển bằng app (ERA_WRITE)
+ERA_WRITE(V13) {
+    uint8_t led1 = param.getInt();
+
+    manual_mode = 1; // Chuyển sang chế độ thủ công khi nhận lệnh từ app
+
+    if (led1 == 1) {
+        door_made = 1;
+        for (int posDegrees = 0; posDegrees <= 90; posDegrees++) {
+            servo1.write(posDegrees);
+            vTaskDelay(20 / portTICK_PERIOD_MS);
+        }
+    } 
+    else {
+        door_made = 0;
+        for (int posDegrees = 90; posDegrees >= 0; posDegrees--) {
+            servo1.write(posDegrees);
+            vTaskDelay(20 / portTICK_PERIOD_MS);
+        }
+        manual_mode = 0; // Cho phép chế độ tự động hoạt động lại sau khi cửa đóng
+    }
+    ERa.virtualWrite(V13, led1);
 }
 
 void updateLCD() {
@@ -391,10 +347,10 @@ const int THRESHOLD = 4000;  // Ngưỡng quang trở
 void controlRelay() {
     if (led_state == 0) {  // Chỉ hoạt động khi app không điều khiển đèn
         int sensorValue = analogRead(33);
-        if(sensorValue > 4000){
+        if(sensorValue > 4094){
           digitalWrite(17, HIGH);
         }
-        else if(sensorValue < 2800){
+        else if(sensorValue < 3200){
           digitalWrite(17, LOW);
         }
     }
@@ -441,4 +397,5 @@ void loop() {
     controlRelay();  // Điều khiển relay
     controlServo();  // Điều khiển servo
     updateLCD();     // Cập nhật màn hình LCD
+     // Đăng ký callback một lần duy nhất
 }
